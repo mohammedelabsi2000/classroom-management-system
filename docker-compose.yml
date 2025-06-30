@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # Consul for Service Discovery and Configuration
+  consul:
+    image: consul:1.18.0
+    container_name: consul
+    ports:
+      - "8500:8500" # UI and API
+      - "8600:8600/udp" # DNS
+    command: "agent -dev -client=0.0.0.0" # -dev for development mode
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # API Gateway Service
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8000:80" # Map host port 8000 to container's web server port 80
+    volumes:
+      - ./api-gateway:/var/www/html
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=sqlite # Or mysql if you later add a shared DB for gateway
+    depends_on:
+      - consul # Gateway depends on Consul for service discovery
+
+  # User Management Service
+  user-management-service:
+    build:
+      context: ./user-management-service
+      dockerfile: Dockerfile
+    container_name: user-management-service
+    ports:
+      - "8001:80" # Unique port for direct access during development
+    volumes:
+      - ./user-management-service:/var/www/html
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=mysql
+      - DB_HOST=user-management-db
+      - DB_PORT=3306
+      - DB_DATABASE=users_db
+      - DB_USERNAME=user
+      - DB_PASSWORD=password
+    depends_on:
+      user-management-db:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  user-management-db:
+    image: mysql:8.0
+    container_name: user-management-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: users_db
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    volumes:
+      - user_management_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uuser", "-ppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Assignment & Grading Service
+  assignment-grading-service:
+    build:
+      context: ./assignment-grading-service
+      dockerfile: Dockerfile
+    container_name: assignment-grading-service
+    ports:
+      - "8002:80" # Unique port for direct access during development
+    volumes:
+      - ./assignment-grading-service:/var/www/html
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_CONNECTION=mysql
+      - DB_HOST=assignment-grading-db
+      - DB_PORT=3306
+      - DB_DATABASE=assignments_db
+      - DB_USERNAME=user
+      - DB_PASSWORD=password
+    depends_on:
+      assignment-grading-db:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+
+  assignment-grading-db:
+    image: mysql:8.0
+    container_name: assignment-grading-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: assignments_db
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+    volumes:
+      - assignment_grading_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uuser", "-ppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  user_management_db_data:
+  assignment_grading_db_data:

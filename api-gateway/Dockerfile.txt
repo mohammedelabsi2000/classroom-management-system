@@ -1,0 +1,41 @@
+# Use the official PHP image with Apache or Nginx (e.g., php:8.2-fpm-alpine for FPM)
+# For simplicity with Apache in development:
+FROM php:8.2-apache
+
+# Install system dependencies and PHP extensions
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    libzip-dev \
+  && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy composer.lock and composer.json
+COPY composer.json composer.lock ./
+
+# Install Composer dependencies
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && composer install --no-dev --optimize-autoloader --no-scripts \
+    && rm -rf /root/.composer
+
+# Copy application code
+COPY . .
+
+# Run composer scripts
+RUN composer run-script post-root-package-install
+RUN composer run-script post-create-project-cmd
+RUN composer run-script post-autoload-dump
+
+# Configure Apache (for simple development setup)
+COPY 000-default.conf /etc/apache2/sites-available/000-default.conf
+RUN a2enmod rewrite
+
+# Expose port 80
+EXPOSE 80
